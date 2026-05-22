@@ -30,7 +30,7 @@ export interface RateLimitItem {
   remaining: number;
 }
 
-export type IslandMode = 'compact' | 'expanded' | 'hidden';
+export type IslandMode = 'compact' | 'expanded' | 'hidden' | 'dot';
 export type WarningLevel = 'none' | 'yellow' | 'red';
 
 export interface AppConfig {

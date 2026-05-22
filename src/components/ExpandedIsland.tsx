@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useAppState } from '../state';
 import { UsageBar } from './UsageBar';
 import { RefreshCw, Globe, Settings, AlertTriangle, AlertCircle, Save } from 'lucide-react';
@@ -15,17 +15,22 @@ export function ExpandedIsland() {
     dispatch({ type: 'SET_MODE', payload: 'compact' });
   }, [dispatch]);
 
-  // 自动收缩
-  useEffect(() => {
-    if (state.config.auto_collapse_delay > 0) {
+  const handleMouseEnter = () => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (state.config.auto_collapse_delay === 0) {
+      handleCollapse();
+    } else if (state.config.auto_collapse_delay > 0) {
       collapseTimerRef.current = setTimeout(() => {
         handleCollapse();
       }, state.config.auto_collapse_delay);
     }
-    return () => {
-      if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
-    };
-  }, [state.config.auto_collapse_delay, handleCollapse]);
+  };
 
   const handleRefresh = async () => {
     try {
@@ -75,9 +80,8 @@ export function ExpandedIsland() {
     <div
       className="flex flex-col gap-3 p-4 rounded-2xl bg-[rgba(0,0,0,0.88)] backdrop-blur-xl border border-white/[0.08] shadow-2xl island-transition"
       style={{ width: 420 }}
-      onMouseLeave={() => {
-        if (state.config.auto_collapse_delay === 0) handleCollapse();
-      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Header */}
       <div className="flex items-center justify-between">

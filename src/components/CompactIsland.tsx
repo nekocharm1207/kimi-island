@@ -19,6 +19,11 @@ export function CompactIsland() {
     dispatch({ type: 'SET_MODE', payload: 'expanded' });
   };
 
+  const handleLogoClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    dispatch({ type: 'SET_MODE', payload: 'dot' });
+  };
+
   return (
     <div
       onClick={handleClick}
@@ -35,7 +40,10 @@ export function CompactIsland() {
       style={{ width: state.config.compact_width }}
     >
       {/* Logo */}
-      <div className="flex items-center justify-center w-5 h-5 rounded-md bg-white/10">
+      <div
+        onClick={handleLogoClick}
+        className="flex items-center justify-center w-5 h-5 rounded-md bg-white/10 cursor-pointer hover:bg-white/20 transition-colors"
+      >
         <span className="text-[10px] font-bold text-white leading-none">K</span>
       </div>
 

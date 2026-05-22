@@ -8,8 +8,10 @@ export function useKimeData() {
   const { state, dispatch } = useAppState();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchData = useCallback(async (force = false) => {
-    dispatch({ type: 'SET_LOADING', payload: true });
+  const fetchData = useCallback(async (force = false, silent = false) => {
+    if (!silent) {
+      dispatch({ type: 'SET_LOADING', payload: true });
+    }
     try {
       const data = await invoke<KimeUsageData>('get_usage_data', { force });
       dispatch({ type: 'SET_DATA', payload: data });
@@ -17,7 +19,9 @@ export function useKimeData() {
     } catch (err) {
       dispatch({ type: 'SET_ERROR', payload: String(err) });
     } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
+      if (!silent) {
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }
     }
   }, [dispatch]);
 
@@ -36,7 +40,7 @@ export function useKimeData() {
     const setupInterval = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(() => {
-        fetchData();
+        fetchData(true, true);
       }, getInterval());
     };
 

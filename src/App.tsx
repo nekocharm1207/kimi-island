@@ -3,6 +3,7 @@ import { useAppState } from './state';
 import { useKimeData } from './hooks/useKimeData';
 import { CompactIsland } from './components/CompactIsland';
 import { ExpandedIsland } from './components/ExpandedIsland';
+import { DotIsland } from './components/DotIsland';
 import { invoke } from '@tauri-apps/api/core';
 
 function App() {
@@ -27,7 +28,7 @@ function App() {
 
   return (
     <div className="flex items-start justify-center min-h-screen bg-transparent p-0">
-      {state.mode === 'compact' ? <CompactIsland /> : <ExpandedIsland />}
+      {state.mode === 'compact' ? <CompactIsland /> : state.mode === 'dot' ? <DotIsland /> : <ExpandedIsland />}
     </div>
   );
 }

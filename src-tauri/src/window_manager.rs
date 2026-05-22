@@ -4,11 +4,12 @@ const COMPACT_WIDTH: f64 = 320.0;
 const COMPACT_HEIGHT: f64 = 48.0;
 const EXPANDED_WIDTH: f64 = 420.0;
 const EXPANDED_HEIGHT: f64 = 460.0;
+const DOT_SIZE: f64 = 48.0;
 const SHOULDER_RADIUS: f64 = 6.0;
 
 #[cfg(windows)]
 use windows_sys::Win32::Graphics::Gdi::{
-    CombineRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
+    CombineRgn, CreateEllipticRgn, CreateRectRgn, DeleteObject, RGN_OR, SetWindowRgn,
 };
 #[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -99,6 +100,27 @@ pub fn apply_rectangular_hit_region<R: tauri::Runtime>(
     Ok(())
 }
 
+#[cfg(windows)]
+pub fn apply_dot_hit_region<R: tauri::Runtime>(
+    window: &WebviewWindow<R>,
+    size: f64,
+) -> tauri::Result<()> {
+    let hwnd = window.hwnd()?.0 as isize;
+    let scale = window.scale_factor()?;
+    let s = logical_to_physical(size, scale);
+    let rgn = unsafe { CreateEllipticRgn(0, 0, s, s) };
+    unsafe { SetWindowRgn(hwnd as _, rgn, 1) };
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn apply_dot_hit_region<R: tauri::Runtime>(
+    _window: &WebviewWindow<R>,
+    _size: f64,
+) -> tauri::Result<()> {
+    Ok(())
+}
+
 #[cfg(not(windows))]
 pub fn apply_rectangular_hit_region<R: tauri::Runtime>(
     _window: &WebviewWindow<R>,
@@ -155,6 +177,12 @@ pub async fn set_island_mode(
                 .map_err(|e| e.to_string())?;
             position_window_top_center(&window, EXPANDED_WIDTH).map_err(|e| e.to_string())?;
             apply_rectangular_hit_region(&window, EXPANDED_WIDTH, EXPANDED_HEIGHT).map_err(|e| e.to_string())?;
+        }
+        "dot" => {
+            window
+                .set_size(tauri::Size::Logical(tauri::LogicalSize::new(DOT_SIZE, DOT_SIZE)))
+                .map_err(|e| e.to_string())?;
+            apply_dot_hit_region(&window, DOT_SIZE).map_err(|e| e.to_string())?;
         }
         "hidden" => {
             window.hide().map_err(|e| e.to_string())?;
