@@ -28,7 +28,7 @@ const defaultConfig: AppConfig = {
   poll_interval_normal: 60,
   poll_interval_warning: 30,
   poll_interval_critical: 15,
-  auto_collapse_delay: 2000,
+  auto_collapse_delay: 800,
   auto_expand_on_warning: false,
   theme: 'system',
   sound_on_warning: false,
