@@ -125,22 +125,27 @@ export function ExpandedIsland() {
         </div>
       </div>
 
-      {/* Rate Limits */}
+      {/* Short-term Quota Card */}
       {data && (
-        <div className="grid grid-cols-3 gap-2">
-          {(['rpm', 'tpm', 'rpd'] as const).map((key) => {
-            const item = data.rate_limit_details[key];
-            const isLimited = item.remaining === 0;
-            return (
-              <div key={key} className="flex flex-col items-center gap-1 p-2 rounded-lg bg-white/[0.04]">
-                <span className="text-[10px] uppercase text-white/40 tracking-wider">{key}</span>
-                <span className={`text-sm font-semibold tabular-nums ${isLimited ? 'text-red-400' : 'text-white'}`}>
-                  {item.current}/{item.limit}
-                </span>
-                <span className="text-[10px] text-white/30">剩余 {item.remaining}</span>
-              </div>
-            );
-          })}
+        <div className="flex flex-col gap-2 p-3 rounded-xl bg-white/[0.04]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/60">五小时额度</span>
+            <span className="text-[10px] text-white/30">短周期</span>
+          </div>
+          <UsageBar
+            ratio={data.rate_limit_details.rpm.limit > 0 ? data.rate_limit_details.rpm.current / data.rate_limit_details.rpm.limit : 0}
+            warningLevel={data.rate_limit_details.rpm.remaining === 0 ? 'red' : 'none'}
+            height={6}
+            showLabel
+          />
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-white/60">
+              已用 {data.rate_limit_details.rpm.current} / 总额 {data.rate_limit_details.rpm.limit}
+            </span>
+            <span className={`tabular-nums ${data.rate_limit_details.rpm.remaining === 0 ? 'text-red-400' : 'text-white/40'}`}>
+              剩余 {data.rate_limit_details.rpm.remaining}
+            </span>
+          </div>
         </div>
       )}
 

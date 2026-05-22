@@ -48,8 +48,9 @@ const initialState: AppState = {
 function calculateWarningLevel(ratio: number, config: AppConfig): WarningLevel {
   const red = config.red_threshold / 100;
   const yellow = config.yellow_threshold / 100;
-  if (ratio >= red) return 'red';
-  if (ratio >= yellow) return 'yellow';
+  const remaining = 1 - ratio;
+  if (remaining <= red) return 'red';
+  if (remaining <= yellow) return 'yellow';
   return 'none';
 }
 

@@ -4,16 +4,28 @@ import { UsageBar } from './UsageBar';
 
 export function CompactIsland() {
   const { state, dispatch } = useAppState();
-  const { data, warningLevel } = state;
+  const { data } = state;
 
-  const ratio = data?.usage_ratio ?? 0;
+  // Compact 显示五小时额度（短周期，更敏感）
+  const rpm = data?.rate_limit_details.rpm;
+  const ratio = rpm && rpm.limit > 0 ? rpm.current / rpm.limit : (data?.usage_ratio ?? 0);
   const percentage = Math.min(Math.max(ratio * 100, 0), 100).toFixed(0);
+
+  // 基于 compact 显示的数据计算 warning level
+  const compactWarning = (() => {
+    const red = state.config.red_threshold / 100;
+    const yellow = state.config.yellow_threshold / 100;
+    const remaining = 1 - ratio;
+    if (remaining <= red) return 'red';
+    if (remaining <= yellow) return 'yellow';
+    return 'none';
+  })();
 
   const pulseClass = {
     none: '',
     yellow: 'animate-pulse-yellow',
     red: 'animate-pulse-red',
-  }[warningLevel];
+  }[compactWarning];
 
   const handleClick = () => {
     dispatch({ type: 'SET_MODE', payload: 'expanded' });
@@ -49,7 +61,7 @@ export function CompactIsland() {
 
       {/* Progress Bar */}
       <div className="flex-1">
-        <UsageBar ratio={ratio} warningLevel={warningLevel} height={5} />
+        <UsageBar ratio={ratio} warningLevel={compactWarning} height={5} />
       </div>
 
       {/* Percentage */}

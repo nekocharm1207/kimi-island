@@ -144,26 +144,27 @@ fn convert_to_frontend_model(sub: GetSubscriptionResponse, usage: GetUsagesRespo
         .find(|u| u.scope == "FEATURE_CODING");
     
     // 计算额度使用比例
+    // 优先级: coding_usage.detail > total_quota > balances
+    // coding_usage.detail 对应控制台"本周用量"（约7天周期）
     let mut usage_ratio = 0.0;
     let mut used = 0u64;
     let mut total = 0u64;
     
-    // 优先用 totalQuota（整体额度），其次用 usages.detail（本周额度）
-    if let Some(ref tq) = usage.total_quota {
-        let tq_limit: u64 = tq.limit.parse().unwrap_or(0);
-        let tq_remaining: u64 = tq.remaining.parse().unwrap_or(0);
-        total = tq_limit;
-        used = tq_limit.saturating_sub(tq_remaining);
-        if tq_limit > 0 {
-            usage_ratio = used as f64 / tq_limit as f64;
-        }
-    } else if let Some(cu) = coding_usage {
+    if let Some(cu) = coding_usage {
         let limit: u64 = cu.detail.limit.parse().unwrap_or(0);
         let remaining: u64 = cu.detail.remaining.parse().unwrap_or(0);
         total = limit;
         used = limit.saturating_sub(remaining);
         if limit > 0 {
             usage_ratio = used as f64 / limit as f64;
+        }
+    } else if let Some(ref tq) = usage.total_quota {
+        let tq_limit: u64 = tq.limit.parse().unwrap_or(0);
+        let tq_remaining: u64 = tq.remaining.parse().unwrap_or(0);
+        total = tq_limit;
+        used = tq_limit.saturating_sub(tq_remaining);
+        if tq_limit > 0 {
+            usage_ratio = used as f64 / tq_limit as f64;
         }
     } else if let Some(balance) = sub.balances.first() {
         usage_ratio = balance.amount_used_ratio;
@@ -201,7 +202,14 @@ fn convert_to_frontend_model(sub: GetSubscriptionResponse, usage: GetUsagesRespo
                     }
                 }
                 "TIME_UNIT_HOUR" => {
-                    // could map to tpm or other
+                    if let Ok(lim) = limit_item.detail.limit.parse::<u32>() {
+                        let rem: u32 = limit_item.detail.remaining.parse().unwrap_or(0);
+                        tpm = RateLimitItem {
+                            current: lim.saturating_sub(rem),
+                            limit: lim,
+                            remaining: rem,
+                        };
+                    }
                 }
                 _ => {}
             }
@@ -228,6 +236,71 @@ fn convert_to_frontend_model(sub: GetSubscriptionResponse, usage: GetUsagesRespo
         rate_limit_details: RateLimitDetails { rpm, tpm, rpd },
         model_permissions,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config;
+
+    /// 集成测试：调用真实 API，验证返回数据结构
+    #[tokio::test]
+    async fn test_fetch_usage_data_structure() {
+        let cfg = config::read_config();
+        
+        // 如果没有配置 token，跳过测试
+        if cfg.kimi_token.is_none() || cfg.kimi_token.as_ref().unwrap().is_empty() {
+            eprintln!("SKIP: no token configured");
+            return;
+        }
+
+        let result = fetch_usage_data(&cfg).await;
+        assert!(result.is_ok(), "API call failed: {:?}", result.err());
+        
+        let data = result.unwrap();
+        
+        // 打印完整数据结构，供人工检查
+        println!("\n========== API Response Structure ==========");
+        println!("current_plan: {}", data.current_plan);
+        println!("validity.current_end_time: {}", data.validity.current_end_time);
+        println!("validity.days_remaining: {}", data.validity.days_remaining);
+        println!("weekly_usage.used: {}", data.weekly_usage.used);
+        println!("weekly_usage.total: {}", data.weekly_usage.total);
+        println!("weekly_usage.unit: {}", data.weekly_usage.unit);
+        println!("usage_ratio: {}", data.usage_ratio);
+        println!("rate_limit_details.rpm: {}/{}/{}", 
+            data.rate_limit_details.rpm.current,
+            data.rate_limit_details.rpm.limit,
+            data.rate_limit_details.rpm.remaining
+        );
+        println!("rate_limit_details.tpm: {}/{}/{}", 
+            data.rate_limit_details.tpm.current,
+            data.rate_limit_details.tpm.limit,
+            data.rate_limit_details.tpm.remaining
+        );
+        println!("rate_limit_details.rpd: {}/{}/{}", 
+            data.rate_limit_details.rpd.current,
+            data.rate_limit_details.rpd.limit,
+            data.rate_limit_details.rpd.remaining
+        );
+        println!("model_permissions: {:?}", data.model_permissions);
+        println!("============================================\n");
+        
+        // 结构验证
+        assert!(!data.current_plan.is_empty(), "current_plan should not be empty");
+        assert!(data.usage_ratio >= 0.0 && data.usage_ratio <= 1.0, "usage_ratio should be in [0,1]");
+        assert!(data.validity.days_remaining >= 0, "days_remaining should be >= 0");
+    }
+
+    /// 测试：验证 JWT 解析能正确提取 sub 和 ssid
+    #[test]
+    fn test_extract_jwt_claims() {
+        // 用一个已知的测试 JWT (header: {"alg":"none"}, payload: {"sub":"test_user","ssid":"123"})
+        let token = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0X3VzZXIiLCJzc2lkIjoiMTIzIn0.";
+        let claims = extract_jwt_claims(token).expect("should parse test JWT");
+        assert_eq!(claims["sub"].as_str().unwrap(), "test_user");
+        assert_eq!(claims["ssid"].as_str().unwrap(), "123");
+    }
 }
 
 // base64 decoder helper (no external base64 crate needed for simple JWT)

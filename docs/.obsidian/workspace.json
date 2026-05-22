@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "TDD.md",
+                "file": "issue-field-mapping.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "TDD"
+              "title": "issue-field-mapping"
             }
           }
         ]
@@ -185,8 +185,8 @@
   },
   "active": "fc873680b1183a84",
   "lastOpenFiles": [
+    "TDD.md",
     "EchoIsland-Research.md",
-    "PRD.md",
-    "TDD.md"
+    "PRD.md"
   ]
 }
