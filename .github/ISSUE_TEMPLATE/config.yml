@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 查看文档
+    url: https://github.com/nekocharm1207/kimi-island/tree/main/docs
+    about: 开发规范、路线图和技术文档
+  - name: 🗺️ 查看路线图
+    url: https://github.com/nekocharm1207/kimi-island/blob/main/docs/ROADMAP.md
+    about: 了解已规划的功能和已知问题
