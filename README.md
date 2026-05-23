@@ -10,7 +10,7 @@ Kimi 订阅额度灵动岛 —— 一个悬浮在屏幕顶部的 Windows 桌面�
 
 | 紧凑模式 | 展开模式 |
 |---------|---------|
-| 悬浮胶囊显示额度百分比 | 点击展开查看详情 |
+| ![紧凑模式](./screenshots/compact.png) | ![展开模式](./screenshots/expanded.png) |
 
 ---
 
