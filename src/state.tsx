@@ -6,6 +6,7 @@ interface AppState {
   data: KimeUsageData | null;
   loading: boolean;
   error: string | null;
+  authError: string | null;
   lastUpdated: Date | null;
   warningLevel: WarningLevel;
   config: AppConfig;
@@ -16,6 +17,7 @@ type AppAction =
   | { type: 'SET_DATA'; payload: KimeUsageData }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
+  | { type: 'SET_AUTH_ERROR'; payload: string | null }
   | { type: 'SET_LAST_UPDATED'; payload: Date }
   | { type: 'SET_WARNING_LEVEL'; payload: WarningLevel }
   | { type: 'SET_CONFIG'; payload: AppConfig };
@@ -40,6 +42,7 @@ const initialState: AppState = {
   data: null,
   loading: true,
   error: null,
+  authError: null,
   lastUpdated: null,
   warningLevel: 'none',
   config: defaultConfig,
@@ -60,11 +63,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, mode: action.payload };
     case 'SET_DATA':
       const warningLevel = calculateWarningLevel(action.payload.usage_ratio, state.config);
-      return { ...state, data: action.payload, warningLevel, error: null };
+      return { ...state, data: action.payload, warningLevel, error: null, authError: null };
     case 'SET_LOADING':
       return { ...state, loading: action.payload };
     case 'SET_ERROR':
-      return { ...state, error: action.payload, loading: false };
+      return { ...state, error: action.payload, authError: null, loading: false };
+    case 'SET_AUTH_ERROR':
+      return { ...state, authError: action.payload, error: null, loading: false };
     case 'SET_LAST_UPDATED':
       return { ...state, lastUpdated: action.payload };
     case 'SET_WARNING_LEVEL':
@@ -88,6 +93,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
     </AppContext.Provider>
   );
+}
+
+export function classifyApiError(err: unknown): { type: 'auth' | 'network' | 'unknown'; message: string } {
+  const errStr = String(err);
+  if (errStr.includes('[AUTH_ERROR]')) {
+    return {
+      type: 'auth',
+      message: errStr.replace('[AUTH_ERROR]', '').trim() || 'Kimi 登录状态已过期，请重新获取 Token',
+    };
+  }
+  if (errStr.includes('[NETWORK_ERROR]')) {
+    return { type: 'network', message: '获取额度信息失败，请检查网络连接' };
+  }
+  return { type: 'unknown', message: '获取额度信息失败，请稍后重试' };
 }
 
 export function useAppState() {

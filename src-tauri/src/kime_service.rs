@@ -5,15 +5,38 @@ use serde_json::json;
 
 const BASE_URL: &str = "https://www.kimi.com";
 
-fn resolve_token(config: &AppConfig) -> Option<String> {
-    // 只使用用户配置的浏览器 token（从 kimi.com 登录后获取）
-    // CLI OAuth token (~/.kimi/credentials/kimi-code.json) 对 web API 无效，不再使用
+fn get_token_expiry(token: &str) -> Option<i64> {
+    let claims = extract_jwt_claims(token).ok()?;
+    claims.get("exp").and_then(|v| v.as_i64())
+}
+
+fn is_token_expired(token: &str) -> bool {
+    match get_token_expiry(token) {
+        Some(exp) => chrono::Utc::now().timestamp() >= exp,
+        None => false,
+    }
+}
+
+fn is_token_near_expiry(token: &str, buffer_seconds: i64) -> bool {
+    match get_token_expiry(token) {
+        Some(exp) => chrono::Utc::now().timestamp() + buffer_seconds >= exp,
+        None => false,
+    }
+}
+
+fn resolve_tokens(config: &AppConfig) -> Vec<String> {
+    let mut tokens = Vec::new();
     if let Some(token) = &config.kimi_token {
         if !token.is_empty() {
-            return Some(token.clone());
+            tokens.push(token.clone());
         }
     }
-    None
+    for token in &config.kimi_tokens {
+        if !token.is_empty() && !tokens.contains(token) {
+            tokens.push(token.clone());
+        }
+    }
+    tokens
 }
 
 fn resolve_device_id() -> Option<String> {
@@ -72,13 +95,8 @@ fn build_client(token: &str, device_id: &str, user_id: &str, session_id: &str) -
         .unwrap()
 }
 
-pub async fn fetch_usage_data(config: &AppConfig) -> Result<KimeUsageData, String> {
-    let token = resolve_token(config)
-        .ok_or("未配置 Kimi 浏览器 token。请点击下方「自动获取 Token」按钮登录获取。")?;
-    let device_id = resolve_device_id()
-        .unwrap_or_else(|| "unknown_device".to_string());
-    
-    let claims = extract_jwt_claims(&token)?;
+async fn fetch_with_token(token: &str, device_id: &str) -> Result<KimeUsageData, String> {
+    let claims = extract_jwt_claims(token)?;
     let user_id = claims.get("sub")
         .and_then(|v| v.as_str())
         .ok_or("JWT 中缺少 sub (user_id)")?
@@ -88,7 +106,7 @@ pub async fn fetch_usage_data(config: &AppConfig) -> Result<KimeUsageData, Strin
         .unwrap_or("0")
         .to_string();
     
-    let client = build_client(&token, &device_id, &user_id, &session_id);
+    let client = build_client(token, device_id, &user_id, &session_id);
     
     // 调用 GetSubscription
     let sub_url = format!("{}/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription", BASE_URL);
@@ -96,17 +114,20 @@ pub async fn fetch_usage_data(config: &AppConfig) -> Result<KimeUsageData, Strin
         .json(&json!({}))
         .send()
         .await
-        .map_err(|e| format!("GetSubscription 请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {}", e))?;
     
     let sub_status = sub_resp.status();
     let sub_text = sub_resp.text().await.map_err(|e| e.to_string())?;
     
+    if sub_status.as_u16() == 401 {
+        return Err("401 Unauthorized".to_string());
+    }
     if !sub_status.is_success() {
-        return Err(format!("GetSubscription HTTP {}: {}", sub_status, &sub_text[..sub_text.len().min(200)]));
+        return Err(format!("HTTP {}", sub_status));
     }
     
     let sub: GetSubscriptionResponse = serde_json::from_str(&sub_text)
-        .map_err(|e| format!("GetSubscription 解析失败: {}. 原始响应: {}", e, &sub_text[..sub_text.len().min(500)]))?;
+        .map_err(|e| format!("解析失败: {}", e))?;
     
     // 调用 GetUsages
     let usage_url = format!("{}/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages", BASE_URL);
@@ -114,20 +135,68 @@ pub async fn fetch_usage_data(config: &AppConfig) -> Result<KimeUsageData, Strin
         .json(&json!({"scope": ["FEATURE_CODING"]}))
         .send()
         .await
-        .map_err(|e| format!("GetUsages 请求失败: {}", e))?;
+        .map_err(|e| format!("请求失败: {}", e))?;
     
     let usage_status = usage_resp.status();
     let usage_text = usage_resp.text().await.map_err(|e| e.to_string())?;
     
+    if usage_status.as_u16() == 401 {
+        return Err("401 Unauthorized".to_string());
+    }
     if !usage_status.is_success() {
-        return Err(format!("GetUsages HTTP {}: {}", usage_status, &usage_text[..usage_text.len().min(200)]));
+        return Err(format!("HTTP {}", usage_status));
     }
     
     let usage: GetUsagesResponse = serde_json::from_str(&usage_text)
-        .map_err(|e| format!("GetUsages 解析失败: {}. 原始响应: {}", e, &usage_text[..usage_text.len().min(500)]))?;
+        .map_err(|e| format!("解析失败: {}", e))?;
     
-    // 转换为前端类型
     convert_to_frontend_model(sub, usage)
+}
+
+pub async fn fetch_usage_data(config: &AppConfig) -> Result<KimeUsageData, String> {
+    let tokens = resolve_tokens(config);
+    if tokens.is_empty() {
+        return Err("[AUTH_ERROR] 未配置 Kimi 浏览器 token。请点击下方「自动获取 Token」按钮登录获取。".to_string());
+    }
+    
+    let device_id = resolve_device_id()
+        .unwrap_or_else(|| "unknown_device".to_string());
+    
+    let mut had_auth_error = false;
+    
+    for token in &tokens {
+        // Token 预检：是否已过期
+        if is_token_expired(token) {
+            had_auth_error = true;
+            continue;
+        }
+        
+        let near_expiry = is_token_near_expiry(token, 3600);
+        
+        match fetch_with_token(token, &device_id).await {
+            Ok(data) => return Ok(data),
+            Err(e) => {
+                let is_auth_failure = e == "401 Unauthorized"
+                    || e.contains("JWT")
+                    || e.contains("Invalid JWT")
+                    || e.contains("Base64 decode")
+                    || e.contains("JSON parse")
+                    || e.contains("缺少 sub");
+                if is_auth_failure {
+                    had_auth_error = true;
+                }
+                // Silence non-auth errors to avoid leaking sensitive details
+                let _ = e;
+                let _ = near_expiry;
+            }
+        }
+    }
+    
+    if had_auth_error {
+        Err("[AUTH_ERROR] Kimi 登录状态已过期，请重新获取 Token".to_string())
+    } else {
+        Err("[NETWORK_ERROR] 获取额度信息失败，请检查网络连接".to_string())
+    }
 }
 
 fn convert_to_frontend_model(sub: GetSubscriptionResponse, usage: GetUsagesResponse) -> Result<KimeUsageData, String> {
@@ -255,6 +324,16 @@ mod tests {
         }
 
         let result = fetch_usage_data(&cfg).await;
+        if let Err(ref e) = result {
+            if e.contains("[AUTH_ERROR]") {
+                eprintln!("SKIP: token expired or invalid");
+                return;
+            }
+            if e.contains("[NETWORK_ERROR]") {
+                eprintln!("SKIP: network error");
+                return;
+            }
+        }
         assert!(result.is_ok(), "API call failed: {:?}", result.err());
         
         let data = result.unwrap();

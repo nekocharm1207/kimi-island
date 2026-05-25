@@ -69,6 +69,8 @@ pub struct AppConfig {
     pub autostart: bool,
     #[serde(default)]
     pub kimi_token: Option<String>,
+    #[serde(default)]
+    pub kimi_tokens: Vec<String>,
 }
 
 fn default_preferred_display() -> String { "primary".to_string() }
@@ -97,6 +99,7 @@ impl Default for AppConfig {
             sound_on_warning: false,
             autostart: false,
             kimi_token: None,
+            kimi_tokens: Vec::new(),
         }
     }
 }

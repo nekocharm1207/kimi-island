@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
-import { useAppState } from '../state';
+import { useAppState, classifyApiError } from '../state';
 import { UsageBar } from './UsageBar';
 import { RefreshCw, Globe, Settings, AlertTriangle, AlertCircle, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { KimeUsageData } from '../types';
 
 export function ExpandedIsland() {
   const { state, dispatch } = useAppState();
-  const { data, warningLevel, loading, error, lastUpdated } = state;
+  const { data, warningLevel, loading, error, authError, lastUpdated } = state;
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tokenInput, setTokenInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -34,9 +35,19 @@ export function ExpandedIsland() {
 
   const handleRefresh = async () => {
     try {
-      await invoke('get_usage_data', { force: true });
+      dispatch({ type: 'SET_LOADING', payload: true });
+      const result = await invoke<KimeUsageData>('get_usage_data', { force: true });
+      dispatch({ type: 'SET_DATA', payload: result });
+      dispatch({ type: 'SET_LAST_UPDATED', payload: new Date() });
     } catch (err) {
-      console.error('Refresh failed:', err);
+      const classified = classifyApiError(err);
+      if (classified.type === 'auth') {
+        dispatch({ type: 'SET_AUTH_ERROR', payload: classified.message });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: classified.message });
+      }
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
@@ -149,32 +160,49 @@ export function ExpandedIsland() {
         </div>
       )}
 
-      {/* Error / No Token */}
-      {error && (
-        <div className="flex flex-col gap-2 px-3 py-2 rounded-lg bg-red-500/10 text-xs">
-          <span className="text-red-400">{error}</span>
-          {(error.includes('token') || error.includes('Token') || error.includes('未找到') || error.includes('未配置')) && (
-            <div className="flex flex-col gap-2">
-              <p className="text-white/50">请打开浏览器 → 访问 kimi.com/code/console → F12 → Application → Local Storage → 复制 access_token → 粘贴到下方：</p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  placeholder="粘贴 access_token..."
-                  className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-white/30"
-                />
-                <button
-                  onClick={handleSaveToken}
-                  disabled={saving || !tokenInput.trim()}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-xs disabled:opacity-40"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {saving ? '保存中...' : '保存'}
-                </button>
-              </div>
+      {/* Auth Error - Token expired or invalid */}
+      {authError && (
+        <div className="flex flex-col gap-2 px-3 py-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span className="text-amber-400 font-medium">登录状态已过期</span>
+          </div>
+          <p className="text-white/50">{authError}</p>
+          <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+            <button
+              onClick={() => invoke('open_auth_window').catch(console.error)}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors text-xs"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              自动获取 Token
+            </button>
+            <p className="text-white/40 text-[10px]">或手动粘贴 access_token：</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="粘贴 access_token..."
+                className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-white/30"
+              />
+              <button
+                onClick={handleSaveToken}
+                disabled={saving || !tokenInput.trim()}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-xs disabled:opacity-40"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {saving ? '保存中...' : '保存'}
+              </button>
             </div>
-          )}
+          </div>
+        </div>
+      )}
+
+      {/* Other Errors */}
+      {error && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 text-xs">
+          <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+          <span className="text-red-400">{error}</span>
         </div>
       )}
 

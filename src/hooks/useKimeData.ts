@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { KimeUsageData } from '../types';
-import { useAppState } from '../state';
+import { useAppState, classifyApiError } from '../state';
 
 export function useKimeData() {
   const { state, dispatch } = useAppState();
@@ -17,7 +17,12 @@ export function useKimeData() {
       dispatch({ type: 'SET_DATA', payload: data });
       dispatch({ type: 'SET_LAST_UPDATED', payload: new Date() });
     } catch (err) {
-      dispatch({ type: 'SET_ERROR', payload: String(err) });
+      const classified = classifyApiError(err);
+      if (classified.type === 'auth') {
+        dispatch({ type: 'SET_AUTH_ERROR', payload: classified.message });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: classified.message });
+      }
     } finally {
       if (!silent) {
         dispatch({ type: 'SET_LOADING', payload: false });

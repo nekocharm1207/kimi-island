@@ -20,6 +20,12 @@ pub fn read_config() -> AppConfig {
         Ok(content) => {
             match serde_json::from_str::<AppConfig>(&content) {
                 Ok(mut config) => {
+                    // Migration: ensure kimi_token is also in kimi_tokens for multi-token support
+                    if let Some(ref token) = config.kimi_token {
+                        if !token.is_empty() && !config.kimi_tokens.contains(token) {
+                            config.kimi_tokens.push(token.clone());
+                        }
+                    }
                     config.compact_width = config.compact_width.clamp(240, 480);
                     config.yellow_threshold = config.yellow_threshold.clamp(5, 50);
                     config.red_threshold = config.red_threshold.clamp(1, 20);

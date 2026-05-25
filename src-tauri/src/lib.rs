@@ -31,7 +31,10 @@ async fn save_kimi_token(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut cfg = config::read_config();
-    cfg.kimi_token = Some(token);
+    cfg.kimi_token = Some(token.clone());
+    // Deduplicate and prioritize new token
+    cfg.kimi_tokens.retain(|t| t != &token);
+    cfg.kimi_tokens.insert(0, token);
     config::write_config(&cfg)?;
     
     // Destroy auth window completely so it can be reopened
